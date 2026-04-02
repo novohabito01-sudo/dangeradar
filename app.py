@@ -2,7 +2,7 @@ import os
 import json
 import urllib.parse
 import requests
-from flask import Flask, Response, request
+from flask import Flask, Response, request, redirect
 
 app = Flask(__name__)
 
@@ -202,8 +202,7 @@ function tipoLabel(t){
 function scCls(s){return s>=65?'high':s>=40?'mid':'low';}
 function scColor(s){return s>=65?'#22d3a0':s>=40?'#f59e0b':'#f43f5e';}
 
-// proxy via servidor
-async function mlFetch_unused(url){
+async function mlFetch(url){
   const r = await fetch(url, {headers:{'Accept':'application/json'}});
   if(!r.ok) throw new Error('Erro '+r.status);
   return await r.json();
@@ -349,15 +348,12 @@ document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')b
 
 APP_ID     = "2320782848310787"
 APP_SECRET = "8Kf9uwHxHtLuZeFAU5x43yyEEQIC946c"
-REDIRECT   = "https://httpbin.org/get"
+REDIRECT   = "https://dangeradar.onrender.com/callback"
 
-# Token salvo em variavel de ambiente ou gerado dinamicamente
 _token_cache = {
     "token":   os.environ.get("ML_ACCESS_TOKEN"),
     "refresh": os.environ.get("ML_REFRESH_TOKEN")
 }
-
-AUTH_CODE =  os.environ.get("AUTH_CODE", "")
 
 def obter_token():
     if _token_cache["token"]:
@@ -373,42 +369,66 @@ def obter_token():
             data = r.json()
             _token_cache["token"]   = data.get("access_token")
             _token_cache["refresh"] = data.get("refresh_token")
-            print(f"Token renovado! access={_token_cache['token'][:20]}...")
             return _token_cache["token"]
-    r = requests.post("https://api.mercadolibre.com/oauth/token", data={
-        "grant_type":    "authorization_code",
-        "client_id":     APP_ID,
-        "client_secret": APP_SECRET,
-        "code":          AUTH_CODE,
-        "redirect_uri":  REDIRECT,
-    })
-    print(f"Token response: {r.status_code} {r.text}")
-    if r.status_code == 200:
-        data = r.json()
-        _token_cache["token"]   = data.get("access_token")
-        _token_cache["refresh"] = data.get("refresh_token")
-        print(f"=== SALVE ESTES TOKENS ===")
-        print(f"ML_ACCESS_TOKEN={_token_cache['token']}")
-        print(f"ML_REFRESH_TOKEN={_token_cache['refresh']}")
-        print(f"=========================")
-        return _token_cache["token"]
     return None
 
 @app.route("/")
 def index():
+    token = obter_token()
+    if not token:
+        login_html = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>DangeRadar — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0f;color:#f0f0f5;font-family:"DM Sans",sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.box{text-align:center;padding:48px;background:#18181f;border:0.5px solid rgba(255,255,255,0.1);border-radius:24px;max-width:400px;width:90%}
+.logo{font-family:"Syne",sans-serif;font-size:32px;font-weight:800;margin-bottom:8px}
+.logo span{color:#a78bfa}
+.sub{font-size:14px;color:#7b7b8f;margin-bottom:32px}
+.btn{display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#5b6fff,#a78bfa);border-radius:14px;color:#fff;font-family:"Syne",sans-serif;font-weight:700;font-size:15px;text-decoration:none;transition:opacity .2s}
+.btn:hover{opacity:.9}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo">Dange<span>Radar</span></div>
+  <div class="sub">Conecte sua conta do Mercado Livre para começar</div>
+  <a class="btn" href="/login">Conectar com Mercado Livre</a>
+</div>
+</body>
+</html>"""
+        return Response(login_html, mimetype="text/html")
     return Response(HTML, mimetype="text/html")
 
-@app.route("/setup")
-def setup():
-    token = obter_token()
-    if token:
-        return Response(json.dumps({
-            "status": "ok",
-            "access_token": _token_cache["token"],
-            "refresh_token": _token_cache["refresh"],
-            "msg": "Salve estes tokens no Render como variaveis de ambiente ML_ACCESS_TOKEN e ML_REFRESH_TOKEN"
-        }), mimetype="application/json")
-    return Response(json.dumps({"status": "erro", "msg": "Nao foi possivel obter token"}), status=500, mimetype="application/json")
+@app.route("/login")
+def login():
+    url = f"https://auth.mercadolivre.com/authorization?response_type=code&client_id={APP_ID}&redirect_uri={urllib.parse.quote(REDIRECT)}"
+    return redirect(url)
+
+@app.route("/callback")
+def callback():
+    code = request.args.get("code")
+    if not code:
+        return Response("Erro: code nao encontrado", status=400)
+    r = requests.post("https://api.mercadolibre.com/oauth/token", data={
+        "grant_type":    "authorization_code",
+        "client_id":     APP_ID,
+        "client_secret": APP_SECRET,
+        "code":          code,
+        "redirect_uri":  REDIRECT,
+    })
+    print(f"Callback token: {r.status_code} {r.text}")
+    if r.status_code == 200:
+        data = r.json()
+        _token_cache["token"]   = data.get("access_token")
+        _token_cache["refresh"] = data.get("refresh_token")
+        return redirect("/")
+    return Response(f"Erro ao obter token: {r.text}", status=500)
 
 @app.route("/api/buscar")
 def buscar():
@@ -417,7 +437,7 @@ def buscar():
     try:
         token = obter_token()
         if not token:
-            return Response(json.dumps({"error": "Token invalido — acesse /setup"}), status=500, mimetype="application/json")
+            return Response(json.dumps({"error": "Nao autenticado — acesse a pagina inicial"}), status=401, mimetype="application/json")
         headers = {"Authorization": f"Bearer {token}"}
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
         r = requests.get(url, headers=headers, timeout=15)
@@ -425,7 +445,7 @@ def buscar():
             _token_cache["token"] = None
             token = obter_token()
             if not token:
-                return Response(json.dumps({"error": "Token expirado"}), status=500, mimetype="application/json")
+                return Response(json.dumps({"error": "Token expirado"}), status=401, mimetype="application/json")
             headers = {"Authorization": f"Bearer {token}"}
             r = requests.get(url, headers=headers, timeout=15)
         r.raise_for_status()
