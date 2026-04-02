@@ -346,13 +346,44 @@ document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')b
 </body>
 </html>"""
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "application/json",
-    "Accept-Language": "pt-BR,pt;q=0.9",
-    "Referer": "https://www.mercadolivre.com.br/",
-    "Origin": "https://www.mercadolivre.com.br",
-}
+APP_ID     = "2320782848310787"
+APP_SECRET = "8Kf9uwHxHtLuZeFAU5x43yyEEQIC946c"
+REDIRECT   = "https://httpbin.org/get"
+AUTH_CODE  = "TG-69cedd10fca44400015069dc-673514876"
+
+_token_cache = {"token": None, "refresh": None}
+
+def obter_token():
+    if _token_cache["token"]:
+        return _token_cache["token"]
+    r = requests.post("https://api.mercadolibre.com/oauth/token", data={
+        "grant_type":    "authorization_code",
+        "client_id":     APP_ID,
+        "client_secret": APP_SECRET,
+        "code":          AUTH_CODE,
+        "redirect_uri":  REDIRECT,
+    })
+    if r.status_code == 200:
+        data = r.json()
+        _token_cache["token"]   = data.get("access_token")
+        _token_cache["refresh"] = data.get("refresh_token")
+        print(f"Token obtido com sucesso!")
+        return _token_cache["token"]
+    # tenta refresh
+    if _token_cache["refresh"]:
+        r2 = requests.post("https://api.mercadolibre.com/oauth/token", data={
+            "grant_type":    "refresh_token",
+            "client_id":     APP_ID,
+            "client_secret": APP_SECRET,
+            "refresh_token": _token_cache["refresh"],
+        })
+        if r2.status_code == 200:
+            data = r2.json()
+            _token_cache["token"]   = data.get("access_token")
+            _token_cache["refresh"] = data.get("refresh_token")
+            return _token_cache["token"]
+    print(f"Erro ao obter token: {r.status_code} {r.text}")
+    return None
 
 @app.route("/")
 def index():
@@ -363,8 +394,17 @@ def buscar():
     q = request.args.get("q", "")
     limit = request.args.get("limit", "48")
     try:
+        token = obter_token()
+        if not token:
+            return Response(json.dumps({"error": "Nao foi possivel obter token"}), status=500, mimetype="application/json")
+        headers = {"Authorization": f"Bearer {token}"}
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
-        r = requests.get(url, headers=HEADERS, timeout=15)
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code == 401:
+            _token_cache["token"] = None
+            token = obter_token()
+            headers = {"Authorization": f"Bearer {token}"}
+            r = requests.get(url, headers=headers, timeout=15)
         r.raise_for_status()
         data = r.json()
         results = data.get("results", [])
@@ -373,7 +413,7 @@ def buscar():
             try:
                 det = requests.get(
                     f"https://api.mercadolibre.com/items/{item['id']}",
-                    headers=HEADERS, timeout=8
+                    headers=headers, timeout=8
                 )
                 if det.status_code == 200:
                     d = det.json()
