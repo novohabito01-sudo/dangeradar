@@ -318,7 +318,10 @@ async function buscar(){
   document.getElementById('results').innerHTML='<div class="loading-state"><div class="spinner"></div><div class="loading-text">Analisando o nicho "'+q+'"...</div></div>';
 
   try{
-    const json=await mlFetch(`https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=48`);
+   const resp=await fetch(`/api/buscar?q=${encodeURIComponent(q)}&limit=48`); 
+    if(!resp.ok){const e=await resp.json();throw new Error(e.error||'Erro '+resp.status);}
+    const json=await resp.json();
+    
     let items=json.results||[];
     if(!items.length){
       document.getElementById('results').innerHTML='<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-title">Nenhum produto encontrado</div><div class="empty-sub">Tente outro termo de busca.</div></div>';
