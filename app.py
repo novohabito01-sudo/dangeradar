@@ -202,34 +202,7 @@ function tipoLabel(t){
 function scCls(s){return s>=65?'high':s>=40?'mid':'low';}
 function scColor(s){return s>=65?'#22d3a0':s>=40?'#f59e0b':'#f43f5e';}
 
-async function mlFetch(url){
-  const r = await fetch(url, {headers:{'Accept':'application/json'}});
-  if(!r.ok) throw new Error('Erro '+r.status);
-  return await r.json();
-}
-
-async function buscarDetalhes(items){
-  const primeiros = items.slice(0,24);
-  const resto = items.slice(24);
-  const detalhados = await Promise.allSettled(
-    primeiros.map(p =>
-      mlFetch(`https://api.mercadolibre.com/items/${p.id}`).catch(()=>null)
-    )
-  );
-  return [
-    ...primeiros.map((p,i)=>{
-      const det = detalhados[i].status==='fulfilled'?detalhados[i].value:null;
-      if(det) Object.assign(p,{
-        date_created: det.date_created||p.date_created,
-        sold_quantity: det.sold_quantity??p.sold_quantity,
-        listing_type_id: det.listing_type_id||p.listing_type_id,
-        price: det.price||p.price
-      });
-      return p;
-    }),
-    ...resto
-  ];
-}
+// busca via servidor proxy
 
 function filtrarOrdenar(){
   const tipo=document.getElementById('ftipo').value;
@@ -318,14 +291,14 @@ async function buscar(){
   document.getElementById('results').innerHTML='<div class="loading-state"><div class="spinner"></div><div class="loading-text">Analisando o nicho "'+q+'"...</div></div>';
 
   try{
-    const json=await mlFetch(`https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=48`);
+    const resp=await fetch(`/api/buscar?q=${encodeURIComponent(q)}&limit=48`);
+    if(!resp.ok){const e=await resp.json();throw new Error(e.error||'Erro '+resp.status);}
+    const json=await resp.json();
     let items=json.results||[];
     if(!items.length){
       document.getElementById('results').innerHTML='<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-title">Nenhum produto encontrado</div><div class="empty-sub">Tente outro termo de busca.</div></div>';
       btn.disabled=false;btn.textContent='Buscar';return;
     }
-    document.getElementById('results').innerHTML='<div class="loading-state"><div class="spinner"></div><div class="loading-text">Carregando detalhes dos produtos...</div></div>';
-    items=await buscarDetalhes(items);
     dados=items.map(p=>{
       p.dias=diasCriacao(p.date_created);
       p._score=calcScore(p);
@@ -356,7 +329,6 @@ _token_cache = {"token": None, "refresh": None}
 def obter_token():
     if _token_cache["token"]:
         return _token_cache["token"]
-    # tenta refresh primeiro
     if _token_cache["refresh"]:
         r = requests.post("https://api.mercadolibre.com/oauth/token", data={
             "grant_type":    "refresh_token",
@@ -368,9 +340,7 @@ def obter_token():
             data = r.json()
             _token_cache["token"]   = data.get("access_token")
             _token_cache["refresh"] = data.get("refresh_token")
-            print("Token renovado via refresh!")
             return _token_cache["token"]
-    # troca o code pelo token
     r = requests.post("https://api.mercadolibre.com/oauth/token", data={
         "grant_type":    "authorization_code",
         "client_id":     APP_ID,
@@ -378,12 +348,11 @@ def obter_token():
         "code":          AUTH_CODE,
         "redirect_uri":  REDIRECT,
     })
-    print(f"Resposta token: {r.status_code} {r.text}")
+    print(f"Token response: {r.status_code} {r.text}")
     if r.status_code == 200:
         data = r.json()
         _token_cache["token"]   = data.get("access_token")
         _token_cache["refresh"] = data.get("refresh_token")
-        print(f"Token obtido! Refresh: {_token_cache['refresh'][:20]}...")
         return _token_cache["token"]
     return None
 
@@ -398,7 +367,7 @@ def buscar():
     try:
         token = obter_token()
         if not token:
-            return Response(json.dumps({"error": "Nao foi possivel obter token ML"}), status=500, mimetype="application/json")
+            return Response(json.dumps({"error": "Nao foi possivel obter token"}), status=500, mimetype="application/json")
         headers = {"Authorization": f"Bearer {token}"}
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
         r = requests.get(url, headers=headers, timeout=15)
@@ -438,4 +407,3 @@ def buscar():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8765))
     app.run(host="0.0.0.0", port=port)
-
