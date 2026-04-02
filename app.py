@@ -357,7 +357,7 @@ _token_cache = {
     "refresh": os.environ.get("ML_REFRESH_TOKEN")
 }
 
-AUTH_CODE = "TG-69cee4fb71866200013de691-266623691"
+AUTH_CODE =  os.environ.get("AUTH_CODE", "")
 
 def obter_token():
     if _token_cache["token"]:
