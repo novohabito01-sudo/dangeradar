@@ -349,13 +349,28 @@ document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')b
 APP_ID     = "2320782848310787"
 APP_SECRET = "8Kf9uwHxHtLuZeFAU5x43yyEEQIC946c"
 REDIRECT   = "https://httpbin.org/get"
-AUTH_CODE  = "TG-69cedd10fca44400015069dc-673514876"
+AUTH_CODE  = "TG-69cedfda93c8a80001415137-266623691"
 
 _token_cache = {"token": None, "refresh": None}
 
 def obter_token():
     if _token_cache["token"]:
         return _token_cache["token"]
+    # tenta refresh primeiro
+    if _token_cache["refresh"]:
+        r = requests.post("https://api.mercadolibre.com/oauth/token", data={
+            "grant_type":    "refresh_token",
+            "client_id":     APP_ID,
+            "client_secret": APP_SECRET,
+            "refresh_token": _token_cache["refresh"],
+        })
+        if r.status_code == 200:
+            data = r.json()
+            _token_cache["token"]   = data.get("access_token")
+            _token_cache["refresh"] = data.get("refresh_token")
+            print("Token renovado via refresh!")
+            return _token_cache["token"]
+    # troca o code pelo token
     r = requests.post("https://api.mercadolibre.com/oauth/token", data={
         "grant_type":    "authorization_code",
         "client_id":     APP_ID,
@@ -363,26 +378,13 @@ def obter_token():
         "code":          AUTH_CODE,
         "redirect_uri":  REDIRECT,
     })
+    print(f"Resposta token: {r.status_code} {r.text}")
     if r.status_code == 200:
         data = r.json()
         _token_cache["token"]   = data.get("access_token")
         _token_cache["refresh"] = data.get("refresh_token")
-        print(f"Token obtido com sucesso!")
+        print(f"Token obtido! Refresh: {_token_cache['refresh'][:20]}...")
         return _token_cache["token"]
-    # tenta refresh
-    if _token_cache["refresh"]:
-        r2 = requests.post("https://api.mercadolibre.com/oauth/token", data={
-            "grant_type":    "refresh_token",
-            "client_id":     APP_ID,
-            "client_secret": APP_SECRET,
-            "refresh_token": _token_cache["refresh"],
-        })
-        if r2.status_code == 200:
-            data = r2.json()
-            _token_cache["token"]   = data.get("access_token")
-            _token_cache["refresh"] = data.get("refresh_token")
-            return _token_cache["token"]
-    print(f"Erro ao obter token: {r.status_code} {r.text}")
     return None
 
 @app.route("/")
@@ -396,13 +398,15 @@ def buscar():
     try:
         token = obter_token()
         if not token:
-            return Response(json.dumps({"error": "Nao foi possivel obter token"}), status=500, mimetype="application/json")
+            return Response(json.dumps({"error": "Nao foi possivel obter token ML"}), status=500, mimetype="application/json")
         headers = {"Authorization": f"Bearer {token}"}
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code == 401:
             _token_cache["token"] = None
             token = obter_token()
+            if not token:
+                return Response(json.dumps({"error": "Token expirado"}), status=500, mimetype="application/json")
             headers = {"Authorization": f"Bearer {token}"}
             r = requests.get(url, headers=headers, timeout=15)
         r.raise_for_status()
@@ -434,3 +438,4 @@ def buscar():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8765))
     app.run(host="0.0.0.0", port=port)
+
