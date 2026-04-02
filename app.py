@@ -318,17 +318,14 @@ async function buscar(){
   document.getElementById('results').innerHTML='<div class="loading-state"><div class="spinner"></div><div class="loading-text">Analisando o nicho "'+q+'"...</div></div>';
 
   try{
-   const resp=await fetch(`/api/buscar?q=${encodeURIComponent(q)}&limit=48`); 
+    const resp=await fetch(`/api/buscar?q=${encodeURIComponent(q)}&limit=48`);
     if(!resp.ok){const e=await resp.json();throw new Error(e.error||'Erro '+resp.status);}
     const json=await resp.json();
-    
     let items=json.results||[];
     if(!items.length){
       document.getElementById('results').innerHTML='<div class="empty-state"><div class="empty-icon">😕</div><div class="empty-title">Nenhum produto encontrado</div><div class="empty-sub">Tente outro termo de busca.</div></div>';
       btn.disabled=false;btn.textContent='Buscar';return;
     }
-    document.getElementById('results').innerHTML='<div class="loading-state"><div class="spinner"></div><div class="loading-text">Carregando detalhes dos produtos...</div></div>';
-    items=await buscarDetalhes(items);
     dados=items.map(p=>{
       p.dias=diasCriacao(p.date_created);
       p._score=calcScore(p);
@@ -350,7 +347,7 @@ document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')b
 </html>"""
 
 APP_ID     = "2320782848310787"
-APP_SECRET = "p6guNGWcl1VJEKbQBB3amN73lkGEp029"
+APP_SECRET = os.environ.get("APP_SECRET", "p6guNGWcl1VJEKbQBB3amN73lkGEp029")
 REDIRECT   = "https://dangeradar.onrender.com/callback"
 
 _token_cache = {
@@ -383,8 +380,7 @@ def index():
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>DangeRadar — Login</title>
+<title>DangeRadar</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -393,8 +389,7 @@ body{background:#0a0a0f;color:#f0f0f5;font-family:"DM Sans",sans-serif;min-heigh
 .logo{font-family:"Syne",sans-serif;font-size:32px;font-weight:800;margin-bottom:8px}
 .logo span{color:#a78bfa}
 .sub{font-size:14px;color:#7b7b8f;margin-bottom:32px}
-.btn{display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#5b6fff,#a78bfa);border-radius:14px;color:#fff;font-family:"Syne",sans-serif;font-weight:700;font-size:15px;text-decoration:none;transition:opacity .2s}
-.btn:hover{opacity:.9}
+.btn{display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#5b6fff,#a78bfa);border-radius:14px;color:#fff;font-family:"Syne",sans-serif;font-weight:700;font-size:15px;text-decoration:none}
 </style>
 </head>
 <body>
@@ -440,26 +435,29 @@ def buscar():
     try:
         token = obter_token()
         if not token:
-            return Response(json.dumps({"error": "Nao autenticado — acesse a pagina inicial"}), status=401, mimetype="application/json")
-        headers = {"Authorization": f"Bearer {token}"}
+            return Response(json.dumps({"error": "Nao autenticado"}), status=401, mimetype="application/json")
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
-        r = requests.get(url, headers=headers, timeout=15)
+        r = requests.get(url, timeout=15)
+        if r.status_code == 403:
+            headers = {"Authorization": f"Bearer {token}"}
+            r = requests.get(url, headers=headers, timeout=15)
         if r.status_code == 401:
             _token_cache["token"] = None
             token = obter_token()
             if not token:
                 return Response(json.dumps({"error": "Token expirado"}), status=401, mimetype="application/json")
-         headers = {}
-        url = f"https://api.mercadolibre.com/sites/MLB/search
+            headers = {"Authorization": f"Bearer {token}"}
+            r = requests.get(url, headers=headers, timeout=15)
         r.raise_for_status()
         data = r.json()
         results = data.get("results", [])
         enriched = []
+        headers_auth = {"Authorization": f"Bearer {token}"}
         for item in results[:24]:
             try:
                 det = requests.get(
-                    f"https://api.mercadolibre.com/items/{item['id']}",
-                    headers=headers, timeout=8
+                    "https://api.mercadolibre.com/items/" + item['id'],
+                    headers=headers_auth, timeout=8
                 )
                 if det.status_code == 200:
                     d = det.json()
