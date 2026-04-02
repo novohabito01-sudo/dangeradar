@@ -449,8 +449,8 @@ def buscar():
             token = obter_token()
             if not token:
                 return Response(json.dumps({"error": "Token expirado"}), status=401, mimetype="application/json")
-            headers = {"Authorization": f"Bearer {token}"}
-            r = requests.get(url, headers=headers, timeout=15)
+         headers = {}
+        url = f"https://api.mercadolibre.com/sites/MLB/search
         r.raise_for_status()
         data = r.json()
         results = data.get("results", [])
