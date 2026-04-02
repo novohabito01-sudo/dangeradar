@@ -347,7 +347,7 @@ document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')b
 </html>"""
 
 APP_ID     = "2320782848310787"
-APP_SECRET = "8Kf9uwHxHtLuZeFAU5x43yyEEQIC946c"
+APP_SECRET = "p6guNGWcl1VJEKbQBB3amN73lkGEp029"
 REDIRECT   = "https://dangeradar.onrender.com/callback"
 
 _token_cache = {
