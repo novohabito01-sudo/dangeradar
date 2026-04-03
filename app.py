@@ -372,26 +372,31 @@ def obter_token():
             return _token_cache["token"]
     return None
 
-def buscar_playwright(q, limit=48):
-    from playwright.sync_api import sync_playwright
-    url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=["--no-sandbox","--disable-dev-shm-usage"])
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            locale="pt-BR"
-        )
-        page = context.new_page()
-        # visita ML para pegar cookies
-        try:
-            page.goto("https://www.mercadolivre.com.br", timeout=10000)
-        except:
-            pass
-        # busca a API
-        response = page.goto(url, timeout=15000)
-        content = page.inner_text("body")
-        browser.close()
-        return json.loads(content)
+def buscar_via_scraping(q, limit=48):
+    """Busca produtos via scraping da pagina de busca do ML"""
+    import re
+    url = f"https://www.mercadolivre.com.br/jm/search?as_word={urllib.parse.quote(q)}&limit={limit}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://www.mercadolivre.com.br/",
+    }
+    s = requests.Session()
+    s.headers.update(headers)
+    # Pega cookies visitando home
+    try:
+        s.get("https://www.mercadolivre.com.br", timeout=8)
+    except:
+        pass
+    # Busca via API com cookies de sessao
+    api_url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
+    r = s.get(api_url, timeout=15)
+    print(f"Scraping status: {r.status_code}")
+    if r.status_code == 200:
+        return r.json()
+    raise Exception(f"Status {r.status_code}: {r.text[:200]}")
 
 @app.route("/")
 def index():
@@ -459,7 +464,7 @@ def buscar():
             return Response(json.dumps({"error": "Nao autenticado — faca login"}), status=401, mimetype="application/json")
         
         print(f"Buscando via Playwright: {q}")
-        data = buscar_playwright(q, limit)
+        data = buscar_via_scraping(q, limit)
         results = data.get("results", [])
         print(f"Resultados: {len(results)}")
         
