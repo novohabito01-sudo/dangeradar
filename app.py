@@ -346,9 +346,9 @@ document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')b
 </body>
 </html>"""
 
-APP_ID     = os.environ.get("APP_ID", "2307047591418558")
-APP_SECRET = os.environ.get("APP_SECRET", "p6guNGWcl1VJEKbQBB3amN73lkGEp029")
-REDIRECT   = "https://dangeradar.onrender.com/callback"
+APP_ID   = os.environ.get("APP_ID", "2307047591418558")
+APP_SECRET = os.environ.get("APP_SECRET", "WjpHHO9es78WDbLNGc9aLUiVXlgszOwy")
+REDIRECT = "https://dangeradar.onrender.com/callback"
 
 _token_cache = {
     "token":   os.environ.get("ML_ACCESS_TOKEN"),
@@ -371,6 +371,27 @@ def obter_token():
             _token_cache["refresh"] = data.get("refresh_token")
             return _token_cache["token"]
     return None
+
+def buscar_playwright(q, limit=48):
+    from playwright.sync_api import sync_playwright
+    url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox","--disable-dev-shm-usage"])
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            locale="pt-BR"
+        )
+        page = context.new_page()
+        # visita ML para pegar cookies
+        try:
+            page.goto("https://www.mercadolivre.com.br", timeout=10000)
+        except:
+            pass
+        # busca a API
+        response = page.goto(url, timeout=15000)
+        content = page.inner_text("body")
+        browser.close()
+        return json.loads(content)
 
 @app.route("/")
 def index():
@@ -420,7 +441,7 @@ def callback():
         "code":          code,
         "redirect_uri":  REDIRECT,
     })
-    print(f"Callback token: {r.status_code} {r.text}")
+    print(f"Callback token: {r.status_code} {r.text[:200]}")
     if r.status_code == 200:
         data = r.json()
         _token_cache["token"]   = data.get("access_token")
@@ -435,42 +456,19 @@ def buscar():
     try:
         token = obter_token()
         if not token:
-            return Response(json.dumps({"error": "Nao autenticado"}), status=401, mimetype="application/json")
-        # Usa session para simular browser
-        s = requests.Session()
-        s.headers.update({
-            "Authorization": f"Bearer {token}",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "pt-BR,pt;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Referer": "https://www.mercadolivre.com.br/",
-            "Origin": "https://www.mercadolivre.com.br",
-        })
-        # Aquece a sessao
-        try:
-            s.get("https://www.mercadolivre.com.br", timeout=5)
-        except:
-            pass
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
-        r = s.get(url, timeout=15)
-        print(f"Status busca: {r.status_code}")
-        if r.status_code == 401:
-            _token_cache["token"] = None
-            token = obter_token()
-            if not token:
-                return Response(json.dumps({"error": "Token expirado"}), status=401, mimetype="application/json")
-            s.headers.update({"Authorization": f"Bearer {token}"})
-            r = s.get(url, timeout=15)
-        r.raise_for_status()
-        data = r.json()
+            return Response(json.dumps({"error": "Nao autenticado — faca login"}), status=401, mimetype="application/json")
+        
+        print(f"Buscando via Playwright: {q}")
+        data = buscar_playwright(q, limit)
         results = data.get("results", [])
+        print(f"Resultados: {len(results)}")
+        
         enriched = []
         headers_auth = {"Authorization": f"Bearer {token}"}
         for item in results[:24]:
             try:
                 det = requests.get(
-                    "https://api.mercadolibre.com/items/" + item['id'],
+                    "https://api.mercadolibre.com/items/" + item["id"],
                     headers=headers_auth, timeout=8
                 )
                 if det.status_code == 200:
@@ -483,10 +481,12 @@ def buscar():
             enriched.append(item)
         for item in results[24:]:
             enriched.append(item)
+        
         resp = Response(json.dumps({"results": enriched}), mimetype="application/json")
         resp.headers["Access-Control-Allow-Origin"] = "*"
         return resp
     except Exception as e:
+        print(f"Erro buscar: {e}")
         return Response(json.dumps({"error": str(e)}), status=500, mimetype="application/json")
 
 if __name__ == "__main__":
