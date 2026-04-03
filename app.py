@@ -437,17 +437,23 @@ def buscar():
         if not token:
             return Response(json.dumps({"error": "Nao autenticado"}), status=401, mimetype="application/json")
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
-        r = requests.get(url, timeout=15)
-        if r.status_code == 403:
-            headers = {"Authorization": f"Bearer {token}"}
-            r = requests.get(url, headers=headers, timeout=15)
+        tentativas = [
+            {"Authorization": f"Bearer {token}", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Accept": "application/json", "Accept-Language": "pt-BR,pt;q=0.9"},
+            {"Authorization": f"Bearer {token}"},
+            {"Authorization": f"Bearer {token}", "X-Format-New": "true"},
+        ]
+        r = None
+        for hdrs in tentativas:
+            r = requests.get(url, headers=hdrs, timeout=15)
+            print(f"Status: {r.status_code}")
+            if r.status_code == 200:
+                break
         if r.status_code == 401:
             _token_cache["token"] = None
             token = obter_token()
             if not token:
                 return Response(json.dumps({"error": "Token expirado"}), status=401, mimetype="application/json")
-            headers = {"Authorization": f"Bearer {token}"}
-            r = requests.get(url, headers=headers, timeout=15)
+            r = requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=15)
         r.raise_for_status()
         data = r.json()
         results = data.get("results", [])
