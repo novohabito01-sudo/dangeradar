@@ -346,7 +346,7 @@ document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')b
 </body>
 </html>"""
 
-APP_ID     = os.environ.get("APP_ID", "2307047591418558")
+APP_ID     = "2320782848310787"
 APP_SECRET = os.environ.get("APP_SECRET", "p6guNGWcl1VJEKbQBB3amN73lkGEp029")
 REDIRECT   = "https://dangeradar.onrender.com/callback"
 
@@ -452,7 +452,7 @@ def buscar():
             s.get("https://www.mercadolivre.com.br", timeout=5)
         except:
             pass
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}&access_token={token}"
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
         r = s.get(url, timeout=15)
         print(f"Status busca: {r.status_code}")
         if r.status_code == 401:
