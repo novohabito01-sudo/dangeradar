@@ -346,7 +346,7 @@ document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')b
 </body>
 </html>"""
 
-APP_ID     = "2320782848310787"
+APP_ID     = os.environ.get("APP_ID", "2307047591418558")
 APP_SECRET = os.environ.get("APP_SECRET", "p6guNGWcl1VJEKbQBB3amN73lkGEp029")
 REDIRECT   = "https://dangeradar.onrender.com/callback"
 
