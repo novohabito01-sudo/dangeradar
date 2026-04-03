@@ -436,24 +436,32 @@ def buscar():
         token = obter_token()
         if not token:
             return Response(json.dumps({"error": "Nao autenticado"}), status=401, mimetype="application/json")
+        # Usa session para simular browser
+        s = requests.Session()
+        s.headers.update({
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "pt-BR,pt;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Referer": "https://www.mercadolivre.com.br/",
+            "Origin": "https://www.mercadolivre.com.br",
+        })
+        # Aquece a sessao
+        try:
+            s.get("https://www.mercadolivre.com.br", timeout=5)
+        except:
+            pass
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
-        tentativas = [
-            {"Authorization": f"Bearer {token}", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36", "Accept": "application/json", "Accept-Language": "pt-BR,pt;q=0.9"},
-            {"Authorization": f"Bearer {token}"},
-            {"Authorization": f"Bearer {token}", "X-Format-New": "true"},
-        ]
-        r = None
-        for hdrs in tentativas:
-            r = requests.get(url, headers=hdrs, timeout=15)
-            print(f"Status: {r.status_code}")
-            if r.status_code == 200:
-                break
+        r = s.get(url, timeout=15)
+        print(f"Status busca: {r.status_code}")
         if r.status_code == 401:
             _token_cache["token"] = None
             token = obter_token()
             if not token:
                 return Response(json.dumps({"error": "Token expirado"}), status=401, mimetype="application/json")
-            r = requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=15)
+            s.headers.update({"Authorization": f"Bearer {token}"})
+            r = s.get(url, timeout=15)
         r.raise_for_status()
         data = r.json()
         results = data.get("results", [])
