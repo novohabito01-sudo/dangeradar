@@ -452,7 +452,7 @@ def buscar():
             s.get("https://www.mercadolivre.com.br", timeout=5)
         except:
             pass
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}"
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={urllib.parse.quote(q)}&limit={limit}&access_token={token}"
         r = s.get(url, timeout=15)
         print(f"Status busca: {r.status_code}")
         if r.status_code == 401:
